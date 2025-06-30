@@ -7,9 +7,9 @@
 #
 # Author: Harish Nischal
 # Repository: https://github.com/harish-nischal/scriptforce
-# Script: https://github.com/harish-nischal/scriptforce/raw/main/SlogFilters.sh
+# Script: https://github.com/harish-nischal/scriptforce/raw/main/DomlogFilterUsingSlog.sh
 #
-# Usage:  bash <(wget -qO - https://github.com/harish-nischal/scriptforce/raw/main/SlogFilters.sh) MainDomain
+# Usage:  bash <(wget -qO - https://github.com/harish-nischal/scriptforce/raw/main/DomlogFilterUsingSlog.sh) MainDomain
 
 
 #!/bin/bash
