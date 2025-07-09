@@ -1,17 +1,16 @@
 #!/bin/bash
 #
 # DomlogFilterUsingSlog.sh
-# Version 1.2
+# Version 1.3
 #
 # Description: Analyze Apache domlogs for a cPanel user by detecting main and addon domains.
+# Supports individual domain or all domains (last 2 days only).
 #
 # Author: Harish Nischal
 # Repository: https://github.com/harish-nischal/scriptforce
 # Script: https://github.com/harish-nischal/scriptforce/raw/main/DomlogFilterUsingSlog.sh
 #
 # Usage:  bash <(wget -qO - https://github.com/harish-nischal/scriptforce/raw/main/DomlogFilterUsingSlog.sh) MainDomain
-
-#!/bin/bash
 
 # Colors
 RED='\033[0;31m'
@@ -39,7 +38,7 @@ done
 
 # Show domain list
 echo -e "${GREEN}Available domains:${NC}"
-echo -e "${CYAN}0)${NC} All domains"
+echo -e "${CYAN}0)${NC} All Domains"
 i=1
 for DOMAIN in "${DOMAINS[@]}"; do
   echo -e "${CYAN}$i)${NC} $DOMAIN"
@@ -53,16 +52,6 @@ read -p "$(echo -e ${YELLOW}Select domain number to process logs:${NC} )" CHOICE
 if ! [[ "$CHOICE" =~ ^[0-9]+$ ]] || [ "$CHOICE" -lt 0 ] || [ "$CHOICE" -gt "${#DOMAINS[@]}" ]; then
   echo -e "${RED}❌ Invalid choice. Exiting.${NC}"
   exit 1
-fi
-
-# Build processing list
-if [ "$CHOICE" -eq 0 ]; then
-  echo -e "✅ ${GREEN}Selected:${NC} All domains"
-  SELECTED_DOMAINS=("${DOMAINS[@]}")
-else
-  SELECTED_DOMAIN="${DOMAINS[$((CHOICE-1))]}"
-  echo -e "✅ ${GREEN}Selected:${NC} $SELECTED_DOMAIN"
-  SELECTED_DOMAINS=("$SELECTED_DOMAIN")
 fi
 
 # Function to process logs for a domain
@@ -80,17 +69,13 @@ process_logs_for_domain() {
     echo -e "${CYAN}Processing log: $LOGPATH${NC}"
     echo -e "${CYAN}==============================================${NC}"
 
-    DATES=$(sudo slog cat "$LOGPATH" 2>/dev/null | grep -h -oP '^\d{1,3}(\.\d{1,3}){3} \S+ \S+ \[\K[0-9]{2}/\w{3}/[0-9]{4}' | sort | uniq)
+    TODAY=$(date +"%d/%b/%Y")
+    YESTERDAY=$(date -d "yesterday" +"%d/%b/%Y")
+    DATES="$TODAY"$'\n'"$YESTERDAY"
 
-    if [ -z "$DATES" ]; then
-      echo -e "${YELLOW}No valid log data in $LOGPATH${NC}"
-      continue
-    fi
+    echo -e "${GREEN}Checking logs for last 2 days: $YESTERDAY and $TODAY${NC}"
 
-    echo -e "${GREEN}Available dates:${NC}"
-    echo "$DATES"
-
-    for DATE in $(echo "$DATES" | tac); do
+    for DATE in $(echo "$DATES"); do
       echo ""
       echo -e "${YELLOW}***** Stats for $DOMAIN :: $DATE *****${NC}"
 
@@ -127,7 +112,14 @@ process_logs_for_domain() {
   done
 }
 
-# Loop through selected domains
-for DOMAIN in "${SELECTED_DOMAINS[@]}"; do
-  process_logs_for_domain "$DOMAIN"
-done
+# Execute based on user choice
+if [ "$CHOICE" -eq 0 ]; then
+  echo -e "✅ ${GREEN}Processing logs for all domains...${NC}"
+  for DOMAIN in "${DOMAINS[@]}"; do
+    process_logs_for_domain "$DOMAIN"
+  done
+else
+  SELECTED_DOMAIN="${DOMAINS[$((CHOICE-1))]}"
+  echo -e "✅ ${GREEN}Selected:${NC} $SELECTED_DOMAIN"
+  process_logs_for_domain "$SELECTED_DOMAIN"
+fi
