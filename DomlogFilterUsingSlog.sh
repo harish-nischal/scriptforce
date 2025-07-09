@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # DomlogFilterUsingSlog.sh
-# Version 1.1
+# Version 1.2
 #
 # Description: Analyze Apache domlogs for a cPanel user by detecting main and addon domains.
 #
@@ -10,7 +10,6 @@
 # Script: https://github.com/harish-nischal/scriptforce/raw/main/DomlogFilterUsingSlog.sh
 #
 # Usage:  bash <(wget -qO - https://github.com/harish-nischal/scriptforce/raw/main/DomlogFilterUsingSlog.sh) MainDomain
-
 
 #!/bin/bash
 
@@ -40,6 +39,7 @@ done
 
 # Show domain list
 echo -e "${GREEN}Available domains:${NC}"
+echo -e "${CYAN}0)${NC} All domains"
 i=1
 for DOMAIN in "${DOMAINS[@]}"; do
   echo -e "${CYAN}$i)${NC} $DOMAIN"
@@ -50,68 +50,84 @@ done
 echo ""
 read -p "$(echo -e ${YELLOW}Select domain number to process logs:${NC} )" CHOICE
 
-if ! [[ "$CHOICE" =~ ^[0-9]+$ ]] || [ "$CHOICE" -lt 1 ] || [ "$CHOICE" -gt "${#DOMAINS[@]}" ]; then
+if ! [[ "$CHOICE" =~ ^[0-9]+$ ]] || [ "$CHOICE" -lt 0 ] || [ "$CHOICE" -gt "${#DOMAINS[@]}" ]; then
   echo -e "${RED}❌ Invalid choice. Exiting.${NC}"
   exit 1
 fi
 
-SELECTED_DOMAIN="${DOMAINS[$((CHOICE-1))]}"
-echo -e "✅ ${GREEN}Selected:${NC} $SELECTED_DOMAIN"
+# Build processing list
+if [ "$CHOICE" -eq 0 ]; then
+  echo -e "✅ ${GREEN}Selected:${NC} All domains"
+  SELECTED_DOMAINS=("${DOMAINS[@]}")
+else
+  SELECTED_DOMAIN="${DOMAINS[$((CHOICE-1))]}"
+  echo -e "✅ ${GREEN}Selected:${NC} $SELECTED_DOMAIN"
+  SELECTED_DOMAINS=("$SELECTED_DOMAIN")
+fi
 
-# Process domlogs
-for LOGPATH in "/usr/local/apache/domlogs/$SELECTED_DOMAIN" "/usr/local/apache/domlogs/${SELECTED_DOMAIN}-ssl_log"; do
-  if [ ! -f "$LOGPATH" ]; then
-    echo -e "${YELLOW}⚠ No log file: $LOGPATH${NC}"
-    continue
-  fi
+# Function to process logs for a domain
+process_logs_for_domain() {
+  local DOMAIN="$1"
 
-  echo ""
-  echo -e "${CYAN}==============================================${NC}"
-  echo -e "${CYAN}Processing log: $LOGPATH${NC}"
-  echo -e "${CYAN}==============================================${NC}"
-
-  DATES=$(sudo slog cat "$LOGPATH" 2>/dev/null | grep -h -oP '^\d{1,3}(\.\d{1,3}){3} \S+ \S+ \[\K[0-9]{2}/\w{3}/[0-9]{4}' | sort | uniq)
-
-  if [ -z "$DATES" ]; then
-    echo -e "${YELLOW}No valid log data in $LOGPATH${NC}"
-    continue
-  fi
-
-  echo -e "${GREEN}Available dates:${NC}"
-  echo "$DATES"
-
-  for DATE in $(echo "$DATES" | tac); do
-    echo ""
-    echo -e "${YELLOW}***** Stats for $SELECTED_DOMAIN :: $DATE *****${NC}"
-
-    TMPFILE=$(mktemp)
-    sudo slog cat "$LOGPATH" | grep "\[$DATE" > "$TMPFILE"
-
-    if [ ! -s "$TMPFILE" ]; then
-      echo -e "${YELLOW}No data for $DATE in $LOGPATH${NC}"
-      rm -f "$TMPFILE"
+  for LOGPATH in "/usr/local/apache/domlogs/$DOMAIN" "/usr/local/apache/domlogs/${DOMAIN}-ssl_log"; do
+    if [ ! -f "$LOGPATH" ]; then
+      echo -e "${YELLOW}⚠ No log file: $LOGPATH${NC}"
       continue
     fi
 
-    TOTAL_HITS=$(wc -l < "$TMPFILE")
-    echo -e "${CYAN}Total hits for $DATE: ${GREEN}$TOTAL_HITS${NC}"
-
     echo ""
-    echo -e "${GREEN}Top 10 IPs:${NC}"
-    awk '{print $1}' "$TMPFILE" | sort | uniq -c | sort -nr | head -10
+    echo -e "${CYAN}==============================================${NC}"
+    echo -e "${CYAN}Processing log: $LOGPATH${NC}"
+    echo -e "${CYAN}==============================================${NC}"
 
-    echo ""
-    echo -e "${GREEN}Top 10 requested scripts:${NC}"
-    awk '{print $7}' "$TMPFILE" | sort | uniq -c | sort -nr | head -10
+    DATES=$(sudo slog cat "$LOGPATH" 2>/dev/null | grep -h -oP '^\d{1,3}(\.\d{1,3}){3} \S+ \S+ \[\K[0-9]{2}/\w{3}/[0-9]{4}' | sort | uniq)
 
-    echo ""
-    echo -e "${GREEN}Top crawler hits:${NC}"
-    grep -iE 'googlebot|bingbot|slurp|baiduspider|yandex' "$TMPFILE" | \
-    awk -F\" '{print $1, $6}' | \
-    sed -E 's/.*(Googlebot|Bingbot|Slurp|Baiduspider|Yandex).*/\1/i' | \
-    paste -d' ' <(grep -iE 'googlebot|bingbot|slurp|baiduspider|yandex' "$TMPFILE" | awk '{print $1}') - | \
-    sort | uniq -c | sort -nr | head -10
+    if [ -z "$DATES" ]; then
+      echo -e "${YELLOW}No valid log data in $LOGPATH${NC}"
+      continue
+    fi
 
-    rm -f "$TMPFILE"
+    echo -e "${GREEN}Available dates:${NC}"
+    echo "$DATES"
+
+    for DATE in $(echo "$DATES" | tac); do
+      echo ""
+      echo -e "${YELLOW}***** Stats for $DOMAIN :: $DATE *****${NC}"
+
+      TMPFILE=$(mktemp)
+      sudo slog cat "$LOGPATH" | grep "\[$DATE" > "$TMPFILE"
+
+      if [ ! -s "$TMPFILE" ]; then
+        echo -e "${YELLOW}No data for $DATE in $LOGPATH${NC}"
+        rm -f "$TMPFILE"
+        continue
+      fi
+
+      TOTAL_HITS=$(wc -l < "$TMPFILE")
+      echo -e "${CYAN}Total hits for $DATE: ${GREEN}$TOTAL_HITS${NC}"
+
+      echo ""
+      echo -e "${GREEN}Top 10 IPs:${NC}"
+      awk '{print $1}' "$TMPFILE" | sort | uniq -c | sort -nr | head -10
+
+      echo ""
+      echo -e "${GREEN}Top 10 requested scripts:${NC}"
+      awk '{print $7}' "$TMPFILE" | sort | uniq -c | sort -nr | head -10
+
+      echo ""
+      echo -e "${GREEN}Top crawler hits:${NC}"
+      grep -iE 'googlebot|bingbot|slurp|baiduspider|yandex' "$TMPFILE" | \
+      awk -F\" '{print $1, $6}' | \
+      sed -E 's/.*(Googlebot|Bingbot|Slurp|Baiduspider|Yandex).*/\1/i' | \
+      paste -d' ' <(grep -iE 'googlebot|bingbot|slurp|baiduspider|yandex' "$TMPFILE" | awk '{print $1}') - | \
+      sort | uniq -c | sort -nr | head -10
+
+      rm -f "$TMPFILE"
+    done
   done
+}
+
+# Loop through selected domains
+for DOMAIN in "${SELECTED_DOMAINS[@]}"; do
+  process_logs_for_domain "$DOMAIN"
 done
